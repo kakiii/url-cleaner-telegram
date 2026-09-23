@@ -34,7 +34,7 @@ Links that are already clean get no reply. The bot answers through the webhook r
 
 ## Updates
 
-Pushing to `main` deploys automatically via Cloudflare Workers Builds (build command `npm test`, deploy command `npx wrangler deploy`). Manual: `npm test && npm run deploy`.
+Pushing to `main` deploys automatically via Cloudflare Workers Builds (no build command; deploy command `npx wrangler deploy`). Run `npm test` before pushing. Manual deploy: `npm run deploy`.
 
 ## Develop
 
