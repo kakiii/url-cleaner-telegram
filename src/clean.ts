@@ -6,6 +6,8 @@ const EXTRA_PARAMS = new Set(["fbclid", "msclkid", "dclid", "twclid"]);
 const X_HOSTS = new Set(["x.com", "twitter.com", "mobile.twitter.com", "mobile.x.com"]);
 const INSTAGRAM_POST_PATH = /^\/(reels?|p|tv)\//;
 const REDDIT_SHARE_PATH = /^\/(r|u|user)\/[^/]+\/s\/[^/]+\/?$/;
+// Bilibili share URLs carry a dozen tracking params not covered by Brave's list; keep only part and timestamp.
+const BILIBILI_KEEP_PARAMS = new Set(["p", "t"]);
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 interface RawRule { include: string[]; exclude: string[]; params: string[] }
@@ -60,17 +62,19 @@ function stripTrackers(url: URL, rules: Rule[]): void {
   }
 }
 
-// Reddit /s/ share links redirect to the canonical /comments/<id>/<title_slug>/ URL.
-async function resolveRedditShare(url: URL, fetchFn: Fetch): Promise<URL> {
-  const res = await fetchFn(url.href, {
-    redirect: "manual",
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; url-cleaner-telegram)" },
-  });
-  const location = res.headers.get("location");
-  if (res.status < 300 || res.status >= 400 || !location) return url;
-  const target = new URL(location, url);
-  // Anything other than a post (login wall, over-18 gate) is not worth replacing the share link with.
-  return target.pathname.includes("/comments/") ? target : url;
+// Follows one redirect hop of a share link; null when there is none or the service is unreachable.
+async function followRedirect(url: URL, fetchFn: Fetch): Promise<URL | null> {
+  try {
+    const res = await fetchFn(url.href, {
+      redirect: "manual",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; url-cleaner-telegram)" },
+    });
+    const location = res.headers.get("location");
+    if (res.status < 300 || res.status >= 400 || !location) return null;
+    return new URL(location, url);
+  } catch {
+    return null;
+  }
 }
 
 /** Returns the cleaned URL, or null when there is nothing to change. */
@@ -79,10 +83,14 @@ export async function cleanUrl(raw: string, rules: Rule[], fetchFn: Fetch = fetc
   let url = new URL(original);
 
   if (/(^|\.)reddit\.com$/.test(url.hostname) && REDDIT_SHARE_PATH.test(url.pathname)) {
-    try {
-      url = await resolveRedditShare(url, fetchFn);
-    } catch {
-      // Reddit unreachable: fall through and just strip trackers.
+    // Share links redirect to /comments/<id>/<title_slug>/; anything else (login wall, over-18 gate) is not worth it.
+    const target = await followRedirect(url, fetchFn);
+    if (target?.pathname.includes("/comments/")) url = target;
+  } else if (url.hostname === "b23.tv") {
+    const target = await followRedirect(url, fetchFn);
+    if (target && /(^|\.)bilibili\.com$/.test(target.hostname)) {
+      url = target;
+      if (!url.pathname.endsWith("/")) url.pathname += "/";
     }
   }
 
@@ -98,6 +106,11 @@ export async function cleanUrl(raw: string, rules: Rule[], fetchFn: Fetch = fetc
   } else if (host === "instagram.com" && INSTAGRAM_POST_PATH.test(url.pathname)) {
     // Third-party embed frontend; if it dies, swap this host (see README).
     url.hostname = "instagram7.com";
+  } else if (/(^|\.)bilibili\.com$/.test(host) && url.pathname.startsWith("/video/")) {
+    for (const key of [...url.searchParams.keys()]) {
+      if (!BILIBILI_KEEP_PARAMS.has(key)) url.searchParams.delete(key);
+    }
+    if (url.searchParams.get("p") === "1") url.searchParams.delete("p");
   }
 
   return url.href === original.href ? null : url.href;
