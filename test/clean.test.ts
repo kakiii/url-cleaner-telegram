@@ -28,9 +28,9 @@ test("youtube.com drops si/feature but keeps v and list", async () => {
   );
 });
 
-test("instagram posts go to instagram7.com without igsh", async () => {
-  assert.equal(await cleanUrl("https://www.instagram.com/reel/Dc4fAOCs97R/?igsh=abc", rules, noFetch), "https://instagram7.com/reel/Dc4fAOCs97R/");
-  assert.equal(await cleanUrl("https://www.instagram.com/p/Dc4fAOCs97R/", rules, noFetch), "https://instagram7.com/p/Dc4fAOCs97R/");
+test("instagram posts go to kkinstagram.com without igsh", async () => {
+  assert.equal(await cleanUrl("https://www.instagram.com/reel/Dc4fAOCs97R/?igsh=abc", rules, noFetch), "https://kkinstagram.com/reel/Dc4fAOCs97R/");
+  assert.equal(await cleanUrl("https://www.instagram.com/p/Dc4fAOCs97R/", rules, noFetch), "https://kkinstagram.com/p/Dc4fAOCs97R/");
   assert.equal(await cleanUrl("https://www.instagram.com/someprofile/", rules, noFetch), null);
 });
 
