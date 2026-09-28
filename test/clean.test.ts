@@ -54,6 +54,32 @@ test("reddit /s/ link is left alone when reddit blocks, errors or redirects else
   assert.equal(await cleanUrl(link, rules, toLogin), null);
 });
 
+test("b23.tv resolves to bilibili.com with tracking params dropped", async () => {
+  const fetchFn = async (url: string, init: RequestInit) => {
+    assert.equal(url, "https://b23.tv/IYQRdVm");
+    assert.equal(init.redirect, "manual");
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://www.bilibili.com/video/BV1wwtz6pERs?buvid=Y74&from_spmid=main.my-history.0.0&is_story_h5=false&mid=uvS&p=1&plat_id=116&share_from=ugc&share_medium=iphone_i&share_plat=ios&share_session_id=380&share_source=COPY&share_tag=s_i&spmid=united.player-video-detail.0.0&timestamp=1790623233&unique_k=IYQRdVm&up_id=392208938" },
+    });
+  };
+  assert.equal(await cleanUrl("https://b23.tv/IYQRdVm", rules, fetchFn), "https://www.bilibili.com/video/BV1wwtz6pERs/");
+});
+
+test("bilibili video keeps part and timestamp", async () => {
+  assert.equal(await cleanUrl("https://www.bilibili.com/video/BV1wwtz6pERs/?p=2&t=30&vd_source=abc", rules, noFetch), "https://www.bilibili.com/video/BV1wwtz6pERs/?p=2&t=30");
+  assert.equal(await cleanUrl("https://www.bilibili.com/video/BV1wwtz6pERs/", rules, noFetch), null);
+  assert.equal(await cleanUrl("https://www.bilibili.com/video/BV1wwtz6pERs", rules, noFetch), null);
+});
+
+test("b23.tv link is left alone when bilibili errors or redirects elsewhere", async () => {
+  const link = "https://b23.tv/IYQRdVm";
+  assert.equal(await cleanUrl(link, rules, async () => new Response("not found", { status: 200 })), null);
+  assert.equal(await cleanUrl(link, rules, async () => { throw new Error("down"); }), null);
+  const elsewhere = async () => new Response(null, { status: 302, headers: { location: "https://example.com/" } });
+  assert.equal(await cleanUrl(link, rules, elsewhere), null);
+});
+
 test("reddit keeps functional context param", async () => {
   assert.equal(await cleanUrl("https://www.reddit.com/r/a/comments/1/t/c2/?context=3&utm_source=share", rules, noFetch), "https://www.reddit.com/r/a/comments/1/t/c2/?context=3");
 });
