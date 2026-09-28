@@ -6,10 +6,10 @@ Telegram group bot on Cloudflare Workers (free plan) that replies with cleaned l
 - `youtu.be/<id>` → `youtube.com/watch?v=<id>` (timestamp kept)
 - Reddit `/s/` share links → resolved to the full `/comments/<id>/<title>/` URL
 - `b23.tv` short links → resolved to `bilibili.com`, keeping only the part (`p`) and timestamp (`t`) params (also applied to direct `bilibili.com/video/` links)
-- Instagram posts/reels → `instagram7.com` for a playable preview
+- Instagram posts/reels → `kkinstagram.com` for a playable preview
 - tracker params stripped using [Brave's `clean-urls.json`](https://github.com/brave/adblock-lists/blob/master/brave-lists/clean-urls.json) (fetched at runtime, cached for a day), plus `utm_*`, `fbclid`, `msclkid`, `dclid`, `twclid`
 
-`instagram7.com` is an anonymous third-party frontend with no fallback. If Instagram previews stop working, pick a working alternative and change the host in `src/clean.ts`.
+`kkinstagram.com` is an anonymous third-party frontend with no fallback. If Instagram previews stop working, pick a working alternative and change the host in `src/clean.ts`.
 
 Links that are already clean get no reply. The bot answers through the webhook response, so the Worker never stores the bot token.
 

@@ -105,7 +105,7 @@ export async function cleanUrl(raw: string, rules: Rule[], fetchFn: Fetch = fetc
     url = new URL(`https://www.youtube.com/watch?v=${url.pathname.slice(1)}${url.search.replace(/^\?/, "&")}`);
   } else if (host === "instagram.com" && INSTAGRAM_POST_PATH.test(url.pathname)) {
     // Third-party embed frontend; if it dies, swap this host (see README).
-    url.hostname = "instagram7.com";
+    url.hostname = "kkinstagram.com";
   } else if (/(^|\.)bilibili\.com$/.test(host) && url.pathname.startsWith("/video/")) {
     for (const key of [...url.searchParams.keys()]) {
       if (!BILIBILI_KEEP_PARAMS.has(key)) url.searchParams.delete(key);
