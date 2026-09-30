@@ -11,7 +11,7 @@ Telegram group bot on Cloudflare Workers (free plan) that replies with cleaned l
 
 `kkinstagram.com` is an anonymous third-party frontend with no fallback. If Instagram previews stop working, pick a working alternative and change the host in `src/clean.ts`.
 
-Links that are already clean get no reply. The bot answers through the webhook response, so the Worker never stores the bot token.
+Links that are already clean get no reply. If a Reddit or Bilibili share link cannot be resolved within 10 seconds, the bot replies with a failure notice and the original link. The failure reason is recorded in Cloudflare Workers Logs. The bot answers through the webhook response, so the Worker never stores the bot token.
 
 ## Deploy
 

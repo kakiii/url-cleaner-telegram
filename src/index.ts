@@ -1,4 +1,4 @@
-import { cleanUrl, loadRules } from "./clean.ts";
+import { cleanUrl, LinkResolutionError, loadRules } from "./clean.ts";
 
 interface Env {
   WEBHOOK_SECRET: string;
@@ -45,7 +45,11 @@ export default {
     if (urls.length === 0) return new Response(null, { status: 204 });
     const rules = await loadRules();
     // Entity text can still be something new URL() rejects; skip those links rather than fail the update.
-    const cleaned = await Promise.all(urls.map((u) => cleanUrl(u, rules).catch(() => null)));
+    const cleaned = await Promise.all(urls.map((u) => cleanUrl(u, rules).catch((error) => {
+      if (!(error instanceof LinkResolutionError)) return null;
+      console.warn({ event: "link_resolution_failed", url: u, reason: error.message });
+      return `Couldn't resolve this share link. Please try again later.\n${u}`;
+    })));
     const changed = cleaned.filter((c) => c !== null);
     if (changed.length === 0) return new Response(null, { status: 204 });
 

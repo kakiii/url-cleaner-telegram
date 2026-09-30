@@ -12,6 +12,7 @@ const BILIBILI_KEEP_PARAMS = new Set(["p", "t"]);
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 interface RawRule { include: string[]; exclude: string[]; params: string[] }
 export interface Rule { include: RegExp[]; exclude: RegExp[]; params: Set<string> }
+export class LinkResolutionError extends Error {}
 
 // Chrome match pattern (e.g. "*://*.youtube.com/watch?*") -> RegExp; null if malformed.
 function matchPattern(pattern: string): RegExp | null {
@@ -62,18 +63,27 @@ function stripTrackers(url: URL, rules: Rule[]): void {
   }
 }
 
-// Follows one redirect hop of a share link; null when there is none or the service is unreachable.
-async function followRedirect(url: URL, fetchFn: Fetch): Promise<URL | null> {
+// Follows one redirect hop of a share link.
+async function followRedirect(url: URL, fetchFn: Fetch): Promise<URL> {
+  let res: Response;
   try {
-    const res = await fetchFn(url.href, {
+    res = await fetchFn(url.href, {
       redirect: "manual",
       headers: { "User-Agent": "Mozilla/5.0 (compatible; url-cleaner-telegram)" },
+      signal: AbortSignal.timeout(10000),
     });
-    const location = res.headers.get("location");
-    if (res.status < 300 || res.status >= 400 || !location) return null;
+  } catch (error) {
+    throw new LinkResolutionError("Network request failed", { cause: error });
+  }
+  if (res.status < 300 || res.status >= 400) {
+    throw new LinkResolutionError(`Expected a redirect, got HTTP ${res.status}`);
+  }
+  const location = res.headers.get("location");
+  if (!location) throw new LinkResolutionError("Redirect has no Location header");
+  try {
     return new URL(location, url);
-  } catch {
-    return null;
+  } catch (error) {
+    throw new LinkResolutionError("Redirect has an invalid Location header", { cause: error });
   }
 }
 
@@ -83,15 +93,18 @@ export async function cleanUrl(raw: string, rules: Rule[], fetchFn: Fetch = fetc
   let url = new URL(original);
 
   if (/(^|\.)reddit\.com$/.test(url.hostname) && REDDIT_SHARE_PATH.test(url.pathname)) {
-    // Share links redirect to /comments/<id>/<title_slug>/; anything else (login wall, over-18 gate) is not worth it.
     const target = await followRedirect(url, fetchFn);
-    if (target?.pathname.includes("/comments/")) url = target;
+    if (!/(^|\.)reddit\.com$/.test(target.hostname) || !target.pathname.includes("/comments/")) {
+      throw new LinkResolutionError("Redirect did not lead to a Reddit post or comment");
+    }
+    url = target;
   } else if (url.hostname === "b23.tv") {
     const target = await followRedirect(url, fetchFn);
-    if (target && /(^|\.)bilibili\.com$/.test(target.hostname)) {
-      url = target;
-      if (!url.pathname.endsWith("/")) url.pathname += "/";
+    if (!/(^|\.)bilibili\.com$/.test(target.hostname)) {
+      throw new LinkResolutionError("Redirect did not lead to Bilibili");
     }
+    url = target;
+    if (!url.pathname.endsWith("/")) url.pathname += "/";
   }
 
   // Strip before rewriting hosts, since the rules are keyed on the original sites.

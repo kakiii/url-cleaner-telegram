@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanUrl, compileRules, loadRules } from "../src/clean.ts";
+import { cleanUrl, compileRules, LinkResolutionError, loadRules } from "../src/clean.ts";
 
 // Subset of brave-lists/clean-urls.json entries, copied verbatim.
 const rules = compileRules([
@@ -38,6 +38,7 @@ test("reddit /s/ link resolves via redirect and is cleaned", async () => {
   const fetchFn = async (url: string, init: RequestInit) => {
     assert.equal(url, "https://www.reddit.com/r/pics/s/AbCdEf12");
     assert.equal(init.redirect, "manual");
+    assert.ok(init.signal instanceof AbortSignal);
     return new Response(null, {
       status: 301,
       headers: { location: "https://www.reddit.com/r/pics/comments/abc123/some_title/?share_id=zz&utm_medium=android_app&utm_term=1" },
@@ -46,12 +47,31 @@ test("reddit /s/ link resolves via redirect and is cleaned", async () => {
   assert.equal(await cleanUrl("https://www.reddit.com/r/pics/s/AbCdEf12", rules, fetchFn), "https://www.reddit.com/r/pics/comments/abc123/some_title/");
 });
 
-test("reddit /s/ link is left alone when reddit blocks, errors or redirects elsewhere", async () => {
+test("reddit /s/ link reports blocked responses, network failures and login redirects", async () => {
   const link = "https://www.reddit.com/r/pics/s/AbCdEf12";
-  assert.equal(await cleanUrl(link, rules, async () => new Response(null, { status: 403 })), null);
-  assert.equal(await cleanUrl(link, rules, async () => { throw new Error("down"); }), null);
+  await assert.rejects(cleanUrl(link, rules, async () => new Response(null, { status: 403 })), {
+    constructor: LinkResolutionError, message: "Expected a redirect, got HTTP 403",
+  });
+  const error = new Error("down");
+  await assert.rejects(cleanUrl(link, rules, async () => { throw error; }), {
+    constructor: LinkResolutionError, message: "Network request failed", cause: error,
+  });
   const toLogin = async () => new Response(null, { status: 302, headers: { location: "/login/?dest=x" } });
-  assert.equal(await cleanUrl(link, rules, toLogin), null);
+  await assert.rejects(cleanUrl(link, rules, toLogin), {
+    constructor: LinkResolutionError, message: "Redirect did not lead to a Reddit post or comment",
+  });
+});
+
+test("share links report missing or invalid redirect locations", async () => {
+  const link = "https://www.reddit.com/r/cats/s/77w4Bp190I";
+  await assert.rejects(cleanUrl(link, rules, async () => new Response(null, { status: 301 })), {
+    constructor: LinkResolutionError, message: "Redirect has no Location header",
+  });
+  await assert.rejects(cleanUrl(link, rules, async () => new Response(null, {
+    status: 301, headers: { location: "https://[" },
+  })), {
+    constructor: LinkResolutionError, message: "Redirect has an invalid Location header",
+  });
 });
 
 test("b23.tv resolves to bilibili.com with tracking params dropped", async () => {
@@ -72,12 +92,14 @@ test("bilibili video keeps part and timestamp", async () => {
   assert.equal(await cleanUrl("https://www.bilibili.com/video/BV1wwtz6pERs", rules, noFetch), null);
 });
 
-test("b23.tv link is left alone when bilibili errors or redirects elsewhere", async () => {
+test("b23.tv link reports failed resolution", async () => {
   const link = "https://b23.tv/IYQRdVm";
-  assert.equal(await cleanUrl(link, rules, async () => new Response("not found", { status: 200 })), null);
-  assert.equal(await cleanUrl(link, rules, async () => { throw new Error("down"); }), null);
+  await assert.rejects(cleanUrl(link, rules, async () => new Response("not found", { status: 200 })), LinkResolutionError);
+  await assert.rejects(cleanUrl(link, rules, async () => { throw new Error("down"); }), LinkResolutionError);
   const elsewhere = async () => new Response(null, { status: 302, headers: { location: "https://example.com/" } });
-  assert.equal(await cleanUrl(link, rules, elsewhere), null);
+  await assert.rejects(cleanUrl(link, rules, elsewhere), {
+    constructor: LinkResolutionError, message: "Redirect did not lead to Bilibili",
+  });
 });
 
 test("reddit keeps functional context param", async () => {
